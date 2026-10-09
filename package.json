@@ -25,6 +25,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "octokit": "^5.0.5",
     "zod": "^4.6.5"
   }
 }
