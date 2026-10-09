@@ -6,11 +6,13 @@ Zbudować GitHub App, która analizuje Pull Requesty wraz z potrzebnym kontekste
 
 Projekt rozwijamy etapami: najpierw jakość analizy, następnie trwałość pracy agenta, automatyzacja, odporność na awarie i deployment. Każda wersja kończy się działającym scenariuszem.
 
-**Aktualny etap:** V1.1 — przygotowanie projektu i kontraktu CLI.
+**Aktualny etap:** V1.2 — pobranie snapshotu PR.
+
+**Zakończone:** V1.1 — szkielet projektu i wejście CLI. Przyjęte jako zakończone na podstawie przeglądu kodu; programu, sprawdzania typów ani testów nie uruchamiano. README i opis konfiguracji sekretów świadomie odłożone do V1.5.
 
 ## Zasady wspólne
 
-- TypeScript, Node.js, pnpm. Octokit do GitHuba, Zod do walidacji, Vitest do testów.
+- TypeScript, Node.js 25, pnpm. Octokit do GitHuba, Zod do walidacji, Vitest do testów.
 - Jeden model przez bibliotekę Pi; przed integracją sprawdzamy aktualne API i wybieramy konkretną wersję pakietu.
 - Pi Durable dopiero w V2. Hono, GitHub App i SQLite dla zadań aplikacji dopiero w V3.
 - Bez mikroserwisów, Redisa, osobnej infrastruktury kolejkowej, RAG i własnego dashboardu.
@@ -38,21 +40,25 @@ Projekt rozwijamy etapami: najpierw jakość analizy, następnie trwałość pra
 
 ### Efekt końcowy
 
-`pnpm dev review <PR_URL> --dry-run`
+`pnpm dev review <PR_URL>`
 
-CLI pobiera zmiany, pozwala modelowi doczytać potrzebny kontekst i wypisuje zwalidowane uwagi w terminalu. Nie zapisuje niczego na GitHubie. Brak flagi `--dry-run` również nie może uruchomić publikacji — w V1 taka funkcja nie istnieje.
+CLI pobiera zmiany, pozwala modelowi doczytać potrzebny kontekst i wypisuje zwalidowane uwagi w terminalu. Nie zapisuje niczego na GitHubie. Flaga `--dry-run` nie jest potrzebna ani obsługiwana — w V1 publikacja nie istnieje.
 
 **Poza zakresem:** webhooki, GitHub App, baza danych, Pi Durable, deployment i automatyczne poprawianie kodu.
 
 ### V1.1 — Szkielet projektu i wejście CLI
 
+**Status:** zakończone na podstawie przeglądu kodu, z odłożeniem dokumentacji do V1.5 zgodnie z decyzją użytkownika.
+
 **Zadania:**
-- [ ] Przygotować minimalny projekt TypeScript/Node.js z pnpm i komendą uruchomieniową.
-- [ ] Ustalić obsługiwaną wersję Node.js i przypiąć zależności przez lockfile.
-- [ ] Dodać komendę `review <PR_URL> --dry-run`.
-- [ ] Walidować URL: HTTPS, host `github.com`, owner, repo oraz dodatni numer PR. GitHub Enterprise poza V1.
-- [ ] Odrzucać nieobsługiwane argumenty i wyświetlać pomoc oraz czytelne błędy.
-- [ ] Opisać konfigurację sekretów i wykluczyć lokalne pliki z sekretami z Gita.
+- [x] Przygotować minimalny projekt TypeScript/Node.js z pnpm i komendą uruchomieniową.
+- [x] Ustalić obsługiwaną wersję Node.js 25 i przypiąć zależności przez lockfile.
+- [x] Dodać komendę `review <PR_URL>`.
+- [x] Walidować URL: HTTPS, host `github.com`, owner, repo oraz dodatni numer PR. GitHub Enterprise poza V1.
+- [x] Odrzucać nieobsługiwane argumenty i wyświetlać pomoc oraz czytelne błędy.
+- [x] Wykluczyć lokalne pliki z sekretami z Gita.
+
+**Odłożone:** README i opis konfiguracji sekretów — przeniesione do V1.5; nie blokują rozpoczęcia V1.2.
 
 **Gotowe, gdy:** poprawny URL daje owner/repo/numer PR, a błędne wejście kończy się komunikatem i niezerowym kodem wyjścia. Nie ma jeszcze żadnych wywołań GitHuba ani modelu.
 
@@ -117,7 +123,7 @@ CLI pobiera zmiany, pozwala modelowi doczytać potrzebny kontekst i wypisuje zwa
 - [ ] Przygotować mały zestaw kontrolowanych przypadków: błąd logiczny, przypadek brzegowy, podejrzenie wykluczone przez kontekst i zmiana bez błędu.
 - [ ] Osobno uruchomić ręczną ewaluację na rzeczywistym modelu oraz wybranym PR w `f1-analysis`.
 - [ ] Zapisać wykryte i przeoczone błędy, fałszywe alarmy, czas oraz zużycie tokenów. Pojedynczy udany przykład nie jest oceną jakości całego reviewera.
-- [ ] Uzupełnić README o uruchamianie i ograniczenia V1.
+- [ ] Przygotować README z uruchamianiem, ograniczeniami V1 i opisem konfiguracji sekretów (odłożone z V1.1).
 
 **Gotowe, gdy:** cały przepływ CLI działa, walidacja ma pokrycie testami, a jakość została sprawdzona na kontrolowanych przykładach. Decyzja o V2 uwzględnia wyniki, nie tylko fakt, że model zwraca JSON.
 
@@ -247,8 +253,10 @@ Na początek wystarczy `src/cli.ts`. W kolejnych krokach dochodzą:
    - Co się stanie, gdy dane zmienią się podczas pracy?
 6. W V1 świadomie akceptujemy ponowne wykonanie po crashu i brak deduplikacji analiz, ponieważ nie ma zewnętrznych zapisów. Te kompromisy zmieniają się przy automatycznej publikacji.
 
-## Pierwsze zadanie do rozpoczęcia
+## Następne zadanie do rozpoczęcia
 
-**V1.1: przygotować projekt i parser komendy `review <PR_URL> --dry-run`.**
+**V1.2: skonfigurować Octokit i pobrać metadane PR.**
 
-Na koniec tego zadania CLI ma wypisać poprawnie odczytane owner/repo/numer PR albo czytelny błąd. Nie instalujemy jeszcze Pi Durable, Hono ani SQLite i nie integrujemy modelu.
+Pierwszy krok: zainstalować Octokit, przekazać token GitHuba przez zmienną środowiskową i dodać `src/github.ts` do odczytu metadanych wskazanego PR. Token ma mieć wyłącznie potrzebne uprawnienia do odczytu i nie może trafiać do logów ani repozytorium.
+
+Na koniec pierwszego kroku CLI ma wypisać bazowe i źródłowe repozytorium oraz `base_sha` i `head_sha`. Paginacja plików, limity i kontrola spójności snapshotu pozostają kolejnymi krokami V1.2. Nie instalujemy Pi Durable, Hono ani SQLite i nie integrujemy modelu.
