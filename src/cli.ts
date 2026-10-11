@@ -1,5 +1,7 @@
 import { parseArgs } from 'node:util';
+import { RequestError } from 'octokit';
 import { z } from 'zod';
+import { getPullRequest } from './github.js';
 
 let args: ReturnType<typeof parseArgs>;
 
@@ -113,6 +115,60 @@ if (!pathResult.success) {
 
 const [, owner, repo, , prNumber] = pathResult.data;
 
+const githubToken = process.env.GITHUB_TOKEN;
+
+if (!githubToken || githubToken.trim().length === 0) {
+  console.error("Missing GITHUB_TOKEN.");
+  process.exit(1);
+}
+
+let response: Awaited<ReturnType<typeof getPullRequest>>;
+
+try {
+  response = await getPullRequest({
+    token: githubToken,
+    owner,
+    repo,
+    prNumber,
+  });
+} catch (error) {
+  if (error instanceof RequestError) {
+    const headers = error.response?.headers;
+    const isRateLimit = error.status === 429 || (
+      error.status === 403 && (
+        headers?.['x-ratelimit-remaining'] === '0' ||
+        headers?.['retry-after'] !== undefined ||
+        error.message.toLowerCase().includes('rate limit')
+      )
+    );
+
+    if (!error.response || error.status === 0) {
+      console.error("Failed to connect to GitHub. Check your connection and try again.");
+    } else if (isRateLimit) {
+      console.error("GitHub API rate limit exceeded. Try again later.");
+    } else if (error.status === 401) {
+      console.error("GitHub authentication failed. Check GITHUB_TOKEN.");
+    } else if (error.status === 403) {
+      console.error("GitHub denied access. Check token permissions and repository access.");
+    } else if (error.status === 404) {
+      console.error("Pull request not found or inaccessible. Check the URL and repository access.");
+    } else if (error.status >= 500 && error.status <= 599) {
+      console.error("GitHub API is temporarily unavailable. Try again later.");
+    } else {
+      console.error(`GitHub API request failed (HTTP ${error.status}).`);
+    }
+  } else if (error instanceof z.ZodError) {
+    const invalidFields = error.issues.map((issue) => issue.path.join('.'));
+    console.error(`Invalid pull request metadata received from GitHub. Check fields: ${invalidFields.join(', ')}.`);
+  } else {
+    console.error("Failed to fetch pull request data.");
+  }
+
+  process.exit(1);
+}
+
 console.log(`Owner: ${owner}`);
 console.log(`Repo: ${repo}`);
 console.log(`PR Number: ${prNumber}`);
+console.log("Pull request data fetched successfully:");
+console.log(response);

@@ -4,7 +4,7 @@
   "private": true,
   "description": "",
   "scripts": {
-    "dev": "tsx src/cli.ts",
+    "dev": "tsx --env-file-if-exists=.env src/cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
