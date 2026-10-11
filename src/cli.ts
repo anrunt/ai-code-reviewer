@@ -79,8 +79,8 @@ const numberError = "Pull request number must be a positive safe integer.";
 
 const prPathSchema = z.tuple([
   z.literal("", { error: pathError }),
-  z.string({ error: pathError }).min(1, { error: pathError }),
-  z.string({ error: pathError }).min(1, { error: pathError }),
+  z.string({ error: pathError }).regex(/^[a-zA-Z0-9_-]+$/, { error: pathError }),
+  z.string({ error: pathError }).regex(/^[a-zA-Z0-9_.-]+$/, { error: pathError }),
   z.literal("pull", { error: pathError }),
   z.string({ error: numberError })
     .regex(/^[0-9]+$/, { error: numberError })
@@ -90,7 +90,21 @@ const prPathSchema = z.tuple([
     }),
 ], { error: pathError });
 
-const pathResult = prPathSchema.safeParse(prUrl.pathname.split("/"));
+const pathSegments = prUrl.pathname.split("/");
+
+try {
+  if (pathSegments[1] !== undefined) {
+    pathSegments[1] = decodeURIComponent(pathSegments[1]);
+  }
+  if (pathSegments[2] !== undefined) {
+    pathSegments[2] = decodeURIComponent(pathSegments[2]);
+  }
+} catch {
+  console.error(pathError);
+  process.exit(1);
+}
+
+const pathResult = prPathSchema.safeParse(pathSegments);
 
 if (!pathResult.success) {
   console.error(pathResult.error.issues[0]?.message ?? pathError);
