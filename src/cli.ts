@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { RequestError } from 'octokit';
 import { z } from 'zod';
-import { getPullRequest } from './github.js';
+import { getPullRequest, getPullRequestFiles } from './github.js';
 
 let args: ReturnType<typeof parseArgs>;
 
@@ -122,10 +122,18 @@ if (!githubToken || githubToken.trim().length === 0) {
   process.exit(1);
 }
 
-let response: Awaited<ReturnType<typeof getPullRequest>>;
+let pullRequest: Awaited<ReturnType<typeof getPullRequest>>;
+let files: Awaited<ReturnType<typeof getPullRequestFiles>>;
 
 try {
-  response = await getPullRequest({
+  pullRequest = await getPullRequest({
+    token: githubToken,
+    owner,
+    repo,
+    prNumber,
+  });
+
+  files = await getPullRequestFiles({
     token: githubToken,
     owner,
     repo,
@@ -142,7 +150,7 @@ try {
       )
     );
 
-    if (!error.response || error.status === 0) {
+    if (!error.response|| error.status === 0) {
       console.error("Failed to connect to GitHub. Check your connection and try again.");
     } else if (isRateLimit) {
       console.error("GitHub API rate limit exceeded. Try again later.");
@@ -159,7 +167,7 @@ try {
     }
   } else if (error instanceof z.ZodError) {
     const invalidFields = error.issues.map((issue) => issue.path.join('.'));
-    console.error(`Invalid pull request metadata received from GitHub. Check fields: ${invalidFields.join(', ')}.`);
+    console.error(`Invalid pull request data received from GitHub. Check fields: ${invalidFields.join(', ')}.`);
   } else {
     console.error("Failed to fetch pull request data.");
   }
@@ -167,8 +175,10 @@ try {
   process.exit(1);
 }
 
+console.log(files);
+
 console.log(`Owner: ${owner}`);
 console.log(`Repo: ${repo}`);
 console.log(`PR Number: ${prNumber}`);
 console.log("Pull request data fetched successfully:");
-console.log(response);
+console.log(pullRequest);

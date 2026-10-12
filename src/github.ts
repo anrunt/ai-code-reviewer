@@ -28,6 +28,19 @@ const pullRequestSchema = z.object({
   deletions: z.number().int().nonnegative(),
 });
 
+const pullRequestFileSchema = z.object({
+  sha: shaSchema,
+  filename: z.string().min(1),
+  status: z.enum(['added', 'removed', 'modified', 'renamed', 'copied', 'changed', 'unchanged']),
+  previous_filename: z.string().min(1).optional(),
+  patch: z.string().optional(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  changes: z.number().int().nonnegative(),
+});
+
+const pullRequestFilesSchema = z.array(pullRequestFileSchema);
+
 export async function getPullRequest({
   token,
   owner,
@@ -54,4 +67,42 @@ export async function getPullRequest({
   });
 
   return pullRequestSchema.parse(response.data);
+}
+
+export async function getPullRequestFiles({
+  token,
+  owner,
+  repo,
+  prNumber,
+}: {
+  token: string;
+  owner: string;
+  repo: string;
+  prNumber: number;
+}) {
+  const octokit = new Octokit({
+    auth: token,
+    throttle: {
+      onRateLimit: () => false,
+      onSecondaryRateLimit: () => false,
+    },
+  });
+
+  const files: z.infer<typeof pullRequestFileSchema>[] = [];
+
+  const pages = octokit.paginate.iterator(
+    octokit.rest.pulls.listFiles,
+    {
+      per_page: 100,
+      owner,
+      repo,
+      pull_number: prNumber,
+    },
+  );
+
+  for await (const page of pages) {
+    files.push(...pullRequestFilesSchema.parse(page.data));
+  }
+
+  return files;
 }
