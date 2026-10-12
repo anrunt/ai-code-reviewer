@@ -1,6 +1,11 @@
 import { Octokit } from 'octokit';
 import { z } from 'zod';
 
+export const MAX_FILES = 200;
+const MAX_INPUT_BYTES = 512 * 1024;
+
+export class ReviewInputLimitError extends Error {}
+
 const repositorySchema = z.object({
   owner: z.object({
     login: z.string().min(1),
@@ -73,12 +78,12 @@ export async function getPullRequestFiles({
   token,
   owner,
   repo,
-  prNumber,
+  pullRequest,
 }: {
   token: string;
   owner: string;
   repo: string;
-  prNumber: number;
+  pullRequest: z.infer<typeof pullRequestSchema>;
 }) {
   const octokit = new Octokit({
     auth: token,
@@ -89,6 +94,11 @@ export async function getPullRequestFiles({
   });
 
   const files: z.infer<typeof pullRequestFileSchema>[] = [];
+  const initialInputBytes = Buffer.byteLength(JSON.stringify({ pullRequest, files }), 'utf8');
+
+  if (initialInputBytes > MAX_INPUT_BYTES) {
+    throw new ReviewInputLimitError(`Review input exceeds the size limit: ${initialInputBytes} bytes, maximum ${MAX_INPUT_BYTES} bytes (512 KiB). Review aborted.`);
+  }
 
   const pages = octokit.paginate.iterator(
     octokit.rest.pulls.listFiles,
@@ -96,12 +106,28 @@ export async function getPullRequestFiles({
       per_page: 100,
       owner,
       repo,
-      pull_number: prNumber,
+      pull_number: pullRequest.number,
     },
   );
 
   for await (const page of pages) {
-    files.push(...pullRequestFilesSchema.parse(page.data));
+    const pageFiles = pullRequestFilesSchema.parse(page.data);
+    const fileCount = files.length + pageFiles.length;
+
+    if (fileCount > MAX_FILES) {
+      throw new ReviewInputLimitError(`Pull request exceeds the file limit: ${fileCount} files received, maximum ${MAX_FILES}. Review aborted.`);
+    }
+
+    const inputBytes = Buffer.byteLength(JSON.stringify({
+      pullRequest,
+      files: [...files, ...pageFiles],
+    }), 'utf8');
+
+    if (inputBytes > MAX_INPUT_BYTES) {
+      throw new ReviewInputLimitError(`Review input exceeds the size limit: ${inputBytes} bytes, maximum ${MAX_INPUT_BYTES} bytes (512 KiB). Review aborted.`);
+    }
+
+    files.push(...pageFiles);
   }
 
   return files;

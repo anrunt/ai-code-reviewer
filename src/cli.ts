@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { RequestError } from 'octokit';
 import { z } from 'zod';
-import { getPullRequest, getPullRequestFiles } from './github.js';
+import { getPullRequest, getPullRequestFiles, MAX_FILES, ReviewInputLimitError } from './github.js';
 
 let args: ReturnType<typeof parseArgs>;
 
@@ -134,11 +134,16 @@ try {
     prNumber,
   });
 
+  if (pullRequest.changed_files > MAX_FILES) {
+    console.error(`Pull request exceeds the file limit: ${pullRequest.changed_files} files, maximum ${MAX_FILES}. Review aborted.`);
+    process.exit(1);
+  }
+
   files = await getPullRequestFiles({
     token: githubToken,
     owner,
     repo,
-    prNumber,
+    pullRequest,
   });
 
   pullRequestAfter = await getPullRequest({
@@ -176,6 +181,8 @@ try {
   } else if (error instanceof z.ZodError) {
     const invalidFields = error.issues.map((issue) => issue.path.join('.'));
     console.error(`Invalid pull request data received from GitHub. Check fields: ${invalidFields.join(', ')}.`);
+  } else if (error instanceof ReviewInputLimitError) {
+    console.error(error.message);
   } else {
     console.error("Failed to fetch pull request data.");
   }
@@ -191,10 +198,33 @@ if (
   process.exit(1);
 }
 
-console.log(files);
+if (files.length !== pullRequestAfter.changed_files) {
+  console.error(`Incomplete pull request file list: expected ${pullRequestAfter.changed_files} files, received ${files.length}. Review aborted.`);
+  if (pullRequestAfter.changed_files > 3000) {
+    console.error("GitHub's pull request files endpoint returns at most 3000 files, even with pagination.");
+  }
+  process.exit(1);
+}
+
+const filesWithoutPatch = files.filter((file) => !file.patch?.trim());
+const filesWithPatchCount = files.length - filesWithoutPatch.length;
+
+if (filesWithPatchCount === 0) {
+  console.error("No text patches are available for review. Review aborted.");
+  process.exit(1);
+}
+
+if (filesWithoutPatch.length > 0) {
+  console.warn(`Warning: Review input is partial: ${filesWithPatchCount} of ${files.length} files have non-empty text patches. The following files have no text patch and their changes cannot be analyzed from the fetched data:`);
+  for (const file of filesWithoutPatch) {
+    console.warn(`- ${file.filename}`);
+  }
+}
+
 
 console.log(`Owner: ${owner}`);
 console.log(`Repo: ${repo}`);
 console.log(`PR Number: ${prNumber}`);
 console.log("Pull request data fetched successfully:");
 console.log(pullRequest);
+console.log(files);
