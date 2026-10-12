@@ -123,6 +123,7 @@ if (!githubToken || githubToken.trim().length === 0) {
 }
 
 let pullRequest: Awaited<ReturnType<typeof getPullRequest>>;
+let pullRequestAfter: Awaited<ReturnType<typeof getPullRequest>>;
 let files: Awaited<ReturnType<typeof getPullRequestFiles>>;
 
 try {
@@ -134,6 +135,13 @@ try {
   });
 
   files = await getPullRequestFiles({
+    token: githubToken,
+    owner,
+    repo,
+    prNumber,
+  });
+
+  pullRequestAfter = await getPullRequest({
     token: githubToken,
     owner,
     repo,
@@ -172,6 +180,14 @@ try {
     console.error("Failed to fetch pull request data.");
   }
 
+  process.exit(1);
+}
+
+if (
+  pullRequest.base.sha !== pullRequestAfter.base.sha ||
+  pullRequest.head.sha !== pullRequestAfter.head.sha
+) {
+  console.error("Pull request changed while fetching data. Run review again.");
   process.exit(1);
 }
 
